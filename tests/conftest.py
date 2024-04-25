@@ -5,7 +5,8 @@ import os
 
 from py21cmfast import UserParams, config, global_params, run_lightcone, wrapper
 from py21cmfast.cache_tools import clear_cache
-
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 def pytest_addoption(parser):
     parser.addoption("--log-level-21", action="store", default="WARNING")
@@ -140,3 +141,11 @@ def perturb_field(ic, redshift):
 @pytest.fixture(scope="session")
 def lc(perturb_field, max_redshift):
     return run_lightcone(perturb=perturb_field, max_redshift=max_redshift)
+
+
+@pytest.fixture(scope="session")
+def plt():
+    # Setup code before yielding plt, if necessary
+    yield plt
+    # Ensure all figures are closed after each test to free up memory
+    plt.close('all')

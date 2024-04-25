@@ -1,11 +1,12 @@
 name: 21cmfast
 channels:
   - defaults
+  - conda-forge
 dependencies:
   - python=3.9
   - sphinxcontrib-htmlhelp
-  - zlib
   - pip
+  - zlib
   - libxml2
   - libffi
   - zipp
@@ -23,7 +24,6 @@ dependencies:
   - gstreamer
   - pygments
   - blas
-  - libstdcxx-ng
   - babel
   - libgfortran-ng
   - pyqt

@@ -54,7 +54,20 @@ setup(
     author="The 21cmFAST coredev team",
     author_email="21cmfast.coredev@gmail.com",
     url="https://github.com/21cmFAST/21cmFAST",
-    packages=find_packages("src"),
+    #                 packages=find_packages("src"),
+    packages=find_packages(where="src", include=['py21cmfast*', 'py21cmfast._data.x_int_tables*']),
+    #                 Specify additional files to include in the package:
+    package_data={
+        'py21cmfast': [
+            '_data/Lyman_alpha_heating_table.dat',
+            '_data/Transfers_z0.dat',
+            '_data/kappa_eH_table.dat',
+            '_data/kappa_pH_table.dat',
+            '_data/recfast_LCDM.dat',
+            '_data/stellar_spectra.dat',
+            '_data/x_int_tables/*.dat',  # Include all .dat files in the x_int_tables directory
+        ],
+    },
     package_dir={"": "src"},
     include_package_data=True,
     zip_safe=False,
