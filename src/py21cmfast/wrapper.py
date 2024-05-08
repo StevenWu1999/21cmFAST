@@ -2787,7 +2787,10 @@ def run_lightcone(
         brightness_files = []
         log10_mturnovers = np.zeros(len(scrollz))
         log10_mturnovers_mini = np.zeros(len(scrollz))
+        print("scrollz: ", scrollz)
         for iz, z in enumerate(scrollz):
+            print("running lightcone for iz: ", iz, " z: ", z)
+            
             # Best to get a perturb for this redshift, to pass to brightness_temperature
             pf2 = perturb[iz]
 
@@ -2817,6 +2820,7 @@ def run_lightcone(
                 )
 
             if flag_options.USE_TS_FLUCT:
+                print("doing spin temp for z: ", z)
                 st2 = spin_temperature(
                     redshift=z,
                     previous_spin_temp=st,
@@ -2830,6 +2834,7 @@ def run_lightcone(
                     cleanup=(cleanup and iz == (len(scrollz) - 1)),
                 )
 
+            print("doing ionize box for z: ", z)
             ib2 = ionize_box(
                 redshift=z,
                 previous_ionize_box=ib,
@@ -2848,6 +2853,7 @@ def run_lightcone(
             log10_mturnovers[iz] = ib2.log10_Mturnover_ave
             log10_mturnovers_mini[iz] = ib2.log10_Mturnover_MINI_ave
 
+            print("doing brightness temp for z: ", z)
             bt2 = brightness_temperature(
                 ionized_box=ib2,
                 perturbed_field=pf2,
@@ -2905,6 +2911,7 @@ def run_lightcone(
                 )
 
             # Interpolate the lightcone
+            print("interpolating lightcone for z: ", z)
             if z < max_redshift:
                 for quantity in lightcone_quantities:
                     data1, data2 = outs[_fld_names[quantity]]
@@ -2955,7 +2962,8 @@ def run_lightcone(
             and lib.interpolation_tables_allocated
         ):
             lib.FreeTsInterpolationTables(flag_options())
-
+        
+        print("returning from lightcone ...")
         out = (
             LightCone(
                 redshift,

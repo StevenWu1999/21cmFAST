@@ -978,6 +978,128 @@ double dNdM(double growthf, double M){
 }
 
 /*
+ FUNCTION dNsub_dMhost_ln
+ Subhalo mass function 
+ */
+double dNsub_dMhost_ln(ln_m_over_M){
+    //Bosch2016 model
+    //     #x  = m/M
+    // #dN/dlgx = A* x**(-alpha) exp(-beta x**omega)
+    // #dN/d ln(x) = dN/dlgx /ln10 = A* x**(-alpha) exp(-beta x**omega) / ln10
+    // #fitFunc_lg_dNdlgx(lgx,alpha,beta_ln10, omega, lgA)
+    // #p_guess = [0.86, 50/np.log(10),4 ,np.log10(0.065)]
+    double m_over_M = exp(ln_m_over_M);
+    double alpha = 0.86;
+    double beta = 50.;
+    double omega = 4.;
+    double A = 0.065;
+    return A* pow(m_over_M,-alpha) * exp(-beta * pow(m_over_M,omega)) / log(10);
+
+}
+
+/*
+ FUNCTION Vel_Virial(M_vir_in_Msun, z)
+    Computes the virial velocity of a halo of mass M_vir at redshift z
+    in m/s
+ */
+double Vel_Virial(M_vir_in_Msun, z){
+    //M_vir in solar mass, return virial velocity in cm/s    
+    //Delta_vir = Deltac_nonlinear(float z)
+    double Delta_vir = 200.;
+    
+    double V_vir = 163*1e5 * (M_vir_in_Msun/1e12 * pow(cosmo_params_ps->hlittle, 1./3.)) * pow(Delta_vir/200., 1./6.) * pow(cosmo_params_ps->OMm, 1./6.) * pow(1+z, 1./2.);
+
+    return V_vir;
+}
+
+/*
+ FUNCTION DF_integrand(ln_m_over_M, log10M, z)
+    M in Msun, z is redshift
+    Integrand dynamical friction heating rate calculation 
+ 
+ */
+// double DF_integrand(ln_m_over_M, log10M, z){
+//     double eta = 1.0; //heating efficiency, set to 1 for now
+//     double I_DF = 1.0; //correction factor for Mach number, set to 1 for now
+//     double M = pow(10,log10M);
+//     double m_over_M = exp(ln_m_over_M);
+//     double m = m_over_M * M;
+//     double V_vir = Vel_Virial(M, z);
+//     //cgs unit
+//     double DF_heating = eta * 4 * PI * pow(G*m*Msun, 2) * I_DF / V_vir;
+//     DF_heating *= dNsub_dMhost_ln(ln_m_over_M);
+//     double growthf = dicke(z);
+//     DF_heating *= dNdM(growthf, M) * log(10.0) * M; //#convert from M to log10(M)
+//     return DF_heating;
+// }
+
+double DF_integrand(double *x, size_t dim, void *params) {
+    // Extract parameters and function inputs
+    double ln_m_over_M = x[0];
+    double log10M = x[1];
+    double z = *(double *)params;
+    
+    double eta = 1.0;   //heating efficiency, set to 1 for now
+    double I_DF = 1.0;   //correction factor for Mach number, set to 1 for now
+    double M = pow(10, log10M);
+    double m_over_M = exp(ln_m_over_M);
+    double m = m_over_M * M;
+    double V_vir = Vel_Virial(M, z);
+    double rho_gas_z = RHOcrit_cgs * cosmo_params_ps->OMb * pow(1+z, 3);
+    double gas_density_factor = 200.0; //gas density factor, set to 200 for now
+    rho_gas_z *= gas_density_factor;
+
+    double DF_heating = eta * 4 * PI * pow(G * m * Msun, 2) * rho_gas_z * I_DF / V_vir;
+    DF_heating *= dNsub_dMhost_ln(ln_m_over_M);
+    double growthf = dicke(z);
+    DF_heating *= dNdM(growthf, M) * log(10.0) * M;  //#convert from M to log10(M)
+
+    return DF_heating;
+}
+
+
+/*
+ FUNCTION integrate_DF_heating(z)
+ integrate_DF_heating [erg/s comoving Mpc^(-3)]
+*/
+
+// Integration function that accepts redshift as input
+double integrate_DF_heating(double z) {
+    // Integration limits
+    double ln_m_over_M_limits[2] = {log(1e-3), 0}; 
+    double M_Jeans = pow(220*(1+z),1.425);
+    double logM_limits[2] = {log10(M_Jeans), 15};       
+
+    // Setup for Monte Carlo integration
+    gsl_monte_function G_func = { &DF_integrand, 2, &z };
+    gsl_rng_env_setup();
+    const gsl_rng_type *T = gsl_rng_default;
+    gsl_rng *r = gsl_rng_alloc(T);
+
+    size_t calls = 50000;
+    double res = 0.0, err = 0.0;
+
+    // Allocate Vegas state and perform integration
+    gsl_monte_vegas_state *s = gsl_monte_vegas_alloc(2);
+    gsl_monte_vegas_integrate(&G_func, ln_m_over_M_limits, logM_limits, 2, 10000, r, s, &res, &err);
+    
+    // Check initial results
+    printf("Initial result: %g Error: %g\n", res, err);
+    // Refine the estimate
+    do {
+        gsl_monte_vegas_integrate(&G_func, ln_m_over_M_limits, logM_limits, 2, calls, r, s, &res, &err);
+        calls *= 2;  // Double the number of calls for refined accuracy if needed
+    } while (fabs(gsl_monte_vegas_chisq(s) - 1.0) > 0.7 && gsl_monte_vegas_chisq(s) != HUGE_VAL && calls < 1e5);
+    printf("Final result: %g Error: %g\n", res, err);
+    // Cleanup
+    gsl_monte_vegas_free(s);
+    gsl_rng_free(r);
+
+    return res;
+}
+
+
+/*
  FUNCTION FgtrM(z, M)
  Computes the fraction of mass contained in haloes with mass > M at redshift z
  */

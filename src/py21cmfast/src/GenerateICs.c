@@ -18,6 +18,10 @@
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_spline.h>
 
+#include <gsl/gsl_monte.h>
+#include <gsl/gsl_monte_plain.h>
+#include <gsl/gsl_monte_vegas.h>
+
 #include "21cmFAST.h"
 #include "exceptions.h"
 #include "logger.h"
