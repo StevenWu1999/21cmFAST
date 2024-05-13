@@ -148,6 +148,11 @@ struct parameters_gsl_FgtrM_int_{
     double gf_obs;
 };
 
+struct parameters_gsl_SHMF_int_{
+    double z;
+    int SHMF_model;
+};
+
 struct parameters_gsl_SFR_General_int_{
     double z_obs;
     double gf_obs;
@@ -971,8 +976,18 @@ double dNdM(double growthf, double M){
         dsigmadm = dsigmasqdm_z0(M);
     }
 
+    //for debug
+    // printf("sigma0(M) = %e, dsigmasqdm0(M) = %e\n", sigma, dsigmadm);
     sigma = sigma * growthf;
     dsigmadm = dsigmadm * (growthf*growthf/(2.*sigma));
+    // printf("sigmaz(M) = %e, dsigmazdm(M) = %e\n", sigma, dsigmadm);
+    // printf("exponential factor = %e\n", exp(-Deltac*Deltac/(2*sigma*sigma)));
+    // printf("Rho_crit = %e\n", RHOcrit);
+    // printf("test fator = %e\n",dsigmadm/pow(sigma,2.0)/M);
+    // printf("all factors: %e  %e  %e  %e\n",cosmo_params_ps->OMm,RHOcrit,dsigmadm/pow(sigma,2.0)/M,pow(E, -(Deltac*Deltac)/(2*sigma*sigma)));
+    // printf("result: %e",cosmo_params_ps->OMm*RHOcrit*dsigmadm/pow(sigma,2.0)/M*pow(E, -(Deltac*Deltac)/(2*sigma*sigma)));
+
+    // printf("result: %e",cosmo_params_ps->OMm*RHOcrit*dsigmadm/pow(sigma,2.0)/M*pow(E, -(Deltac*Deltac)/(2*sigma*sigma))*sqrt(2/PI)*Deltac);
 
     return (-(cosmo_params_ps->OMm)*RHOcrit/M) * sqrt(2/PI) * (Deltac/(sigma*sigma)) * dsigmadm * pow(E, -(Deltac*Deltac)/(2*sigma*sigma));
 }
@@ -981,7 +996,7 @@ double dNdM(double growthf, double M){
  FUNCTION dNsub_dMhost_ln
  Subhalo mass function 
  */
-double dNsub_dMhost_ln(ln_m_over_M){
+double dNsub_dMhost_ln(double ln_m_over_M){
     //Bosch2016 model
     //     #x  = m/M
     // #dN/dlgx = A* x**(-alpha) exp(-beta x**omega)
@@ -998,11 +1013,104 @@ double dNsub_dMhost_ln(ln_m_over_M){
 }
 
 /*
+ FUNCTION dNsub_dMhost_lg
+ Subhalo mass function  dNsub/dlg(m/M)
+ */
+double dNsub_dMhost_lg(double lg_m_over_M, double z, int SHMF_model){
+    // dN/dlgx = A* x**(-alpha) exp(-beta x**omega)
+    double m_over_M = pow(10.0,lg_m_over_M);
+    double beta = 50.0;
+    double omega = 4.0;
+    double lgA, A; double alpha;
+    if(SHMF_model == 0){
+        //Bosch2016 model
+        A = 0.065;
+        alpha = 0.86;
+    }else if(SHMF_model == 1){
+        //TNG50fit
+        if(z < 20){
+            lgA = 0.040*z - 0.981;
+            A = pow(10.0,lgA);
+            alpha = -0.015*z + 0.819;
+        }else{
+            lgA = 0.040*20 - 0.981;
+            A = pow(10.0,lgA);
+            alpha = -0.015*20 + 0.819;
+        }
+
+    }else if(SHMF_model == 2){
+        //TNG50 fit, but no heating above z = 20
+        if(z < 20){
+            lgA = 0.040*z - 0.981;
+            A = pow(10.0,lgA);
+            alpha = -0.015*z + 0.819;
+        }else{
+            A = 0.0;
+            alpha = 0.86;
+        }
+
+    }else{
+        LOG_ERROR("No such SHMF defined: %i. Output is bogus.", SHMF_model);
+        Throw(ValueError);
+    }
+
+
+  
+    return A* pow(m_over_M,-alpha) * exp(-beta * pow(m_over_M,omega));
+
+}
+
+double dNsub_dMhost_lg_DFintegrand(double lg_m_over_M, void* params){
+    struct parameters_gsl_SHMF_int_ vals = *(struct parameters_gsl_SHMF_int_ *)params;
+    double z = vals.z;
+    int SHMF_model = vals.SHMF_model;
+    double m_over_M = pow(10.0,lg_m_over_M);
+    return pow(m_over_M,2.0) * dNsub_dMhost_lg(lg_m_over_M, z, SHMF_model);
+}
+
+/*
+    FUNCTION integrate_subhalo_mass_function(z)
+    integrate dNsub/dlg(m/M) * (m/M)^2
+*/
+double integrate_subhalo_mass_function(double z, int SHMF_model) {
+    gsl_integration_workspace *w = gsl_integration_workspace_alloc(1000);
+    double result, error;
+    gsl_function F;
+    double rel_tol  = FRACT_FLOAT_ERR*10; //<- relative tolerance
+    
+    F.function = &dNsub_dMhost_lg_DFintegrand;
+    struct parameters_gsl_SHMF_int_ parameters_gsl_SHMF = {
+        .z = z,
+        .SHMF_model = SHMF_model,
+    };
+    F.params = &parameters_gsl_SHMF;
+
+    double lg_m_over_M_min = log10(1e-3);  
+    double lg_m_over_M_max = log10(0.8);      
+
+    int status;
+    gsl_set_error_handler_off();
+    //status = gsl_integration_qags(&F, lg_m_over_M_min, lg_m_over_M_max, 0, rel_tol, 1000, w, &result, &error);
+
+    status = gsl_integration_qag (&F, lg_m_over_M_min, lg_m_over_M_max, 0, rel_tol, 1000, GSL_INTEG_GAUSS61, w, &result, &error);
+
+    if(status!=0) {
+        LOG_ERROR("gsl integration error occured!");
+        LOG_ERROR("(function argument): lower_limit=%e upper_limit=%e rel_tol=%e result=%e error=%e",lg_m_over_M_min,lg_m_over_M_max,rel_tol,result,error);
+        LOG_ERROR("integrate SHMF at z =%e",z);
+        GSL_ERROR(status);
+        exit(1);
+    }
+    gsl_integration_workspace_free(w);
+
+    return result;
+}
+/*
  FUNCTION Vel_Virial(M_vir_in_Msun, z)
     Computes the virial velocity of a halo of mass M_vir at redshift z
-    in m/s
+    in cm/s
  */
-double Vel_Virial(M_vir_in_Msun, z){
+double Vel_Virial(double M_vir_in_Msun, double z){
     //M_vir in solar mass, return virial velocity in cm/s    
     //Delta_vir = Deltac_nonlinear(float z)
     double Delta_vir = 200.;
@@ -1013,33 +1121,100 @@ double Vel_Virial(M_vir_in_Msun, z){
 }
 
 /*
- FUNCTION DF_integrand(ln_m_over_M, log10M, z)
-    M in Msun, z is redshift
-    Integrand dynamical friction heating rate calculation 
- 
- */
-// double DF_integrand(ln_m_over_M, log10M, z){
-//     double eta = 1.0; //heating efficiency, set to 1 for now
-//     double I_DF = 1.0; //correction factor for Mach number, set to 1 for now
-//     double M = pow(10,log10M);
-//     double m_over_M = exp(ln_m_over_M);
-//     double m = m_over_M * M;
-//     double V_vir = Vel_Virial(M, z);
-//     //cgs unit
-//     double DF_heating = eta * 4 * PI * pow(G*m*Msun, 2) * I_DF / V_vir;
-//     DF_heating *= dNsub_dMhost_ln(ln_m_over_M);
-//     double growthf = dicke(z);
-//     DF_heating *= dNdM(growthf, M) * log(10.0) * M; //#convert from M to log10(M)
-//     return DF_heating;
-// }
+ FUNCTION dNdlgM_DFintegrand(lgM, z)
+    Integrand of host halo dN/dlgM * M^2 *I(V) /V(M) for DF heating
+    M in Msun
+*/
+double dNdlgM_DFintegrand(double lgM, void* params){
+    double z = *(double *)params;
+    double M = pow(10, lgM);
+    double growthf = dicke(z);
+    
+    double I_DF = 1.0;   //correction factor for Mach number, set to 1 for now
+    double V_vir = Vel_Virial(M, z);
 
-double DF_integrand(double *x, size_t dim, void *params) {
+    double DF_integrand = pow(M, 2.0) * I_DF / V_vir;
+    DF_integrand *= dNdM(growthf, M) * M * log(10.0);  //#convert from dN/dM to dN/dlgM
+
+    double rho_gas_z = RHOcrit_cgs * cosmo_params_ps->OMb * pow(1+z, 3);
+    double gas_density_factor = 200.0; //gas density factor, set to 200 for now
+    rho_gas_z *= gas_density_factor;
+    DF_integrand *=  4 * PI * pow(G*Msun,2) * rho_gas_z;
+
+    //if DF_integrand == nan, stop
+    if(isnan(DF_integrand)){
+        printf("DF_integrand = nan, stop\n");
+        exit(1);
+    }
+
+    return DF_integrand;
+}
+
+double dNdM_DFintegrand(double M, void* params){
+    double z = *(double *)params;
+
+    double growthf = dicke(z);
+    
+    double I_DF = 1.0;   //correction factor for Mach number, set to 1 for now
+    double V_vir = Vel_Virial(M, z);
+
+    double DF_integrand = pow(M, 2.0) * I_DF / V_vir;
+    DF_integrand *= dNdM(growthf, M);  
+
+    double rho_gas_z = RHOcrit_cgs * cosmo_params_ps->OMb * pow(1+z, 3);
+    double gas_density_factor = 200.0; //gas density factor, set to 200 for now
+    rho_gas_z *= gas_density_factor;
+    DF_integrand *=  4 * PI * pow(G*Msun,2) * rho_gas_z;
+
+    return DF_integrand;
+}
+
+
+double integrate_DF_heating(double z, int SHMF_model) {
+    gsl_integration_workspace *w = gsl_integration_workspace_alloc(1000);
+    double result, error;
+    gsl_function F;
+    double rel_tol  = FRACT_FLOAT_ERR*100; // use a higher tolerance for DF heating integral
+
+    F.function = &dNdlgM_DFintegrand;
+    // F.function = &dNdM_DFintegrand;
+    F.params = &z;
+
+    double M_Jeans = pow(220*(1+z),1.425);
+    double lgM_min = log10(M_Jeans);
+    double lgM_max = 15.0;  
+    double M_max = pow(10, lgM_max);    
+
+    int status;
+    gsl_set_error_handler_off();
+
+    printf("start integrating DF heating at z = %e\n",z);
+    status = gsl_integration_qag (&F, lgM_min, lgM_max, 0, rel_tol, 1000, GSL_INTEG_GAUSS61, w, &result, &error);
+    // status = gsl_integration_qag (&F, lgM_min, lgM_max, 0, rel_tol, 1000, GSL_INTEG_GAUSS61, w, &result, &error);
+
+    if(status!=0) {
+        LOG_ERROR("gsl integration error occured!");
+        LOG_ERROR("(function argument): lower_limit=%e upper_limit=%e rel_tol=%e result=%e error=%e",lgM_min,lgM_max,rel_tol,result,error);
+        LOG_ERROR("integrate DF heating at z =%e",z);
+        GSL_ERROR(status);
+        exit(1);
+    }
+    gsl_integration_workspace_free(w);
+    printf("HMF integral = %e\n", result);
+
+    double SHMF_integral = integrate_subhalo_mass_function(z, SHMF_model);
+    result *= SHMF_integral;
+
+
+    return result;
+}
+
+double DF_integrand_2D(double *x, size_t dim, void *params) {
     // Extract parameters and function inputs
     double ln_m_over_M = x[0];
     double log10M = x[1];
     double z = *(double *)params;
     
-    double eta = 1.0;   //heating efficiency, set to 1 for now
     double I_DF = 1.0;   //correction factor for Mach number, set to 1 for now
     double M = pow(10, log10M);
     double m_over_M = exp(ln_m_over_M);
@@ -1049,7 +1224,7 @@ double DF_integrand(double *x, size_t dim, void *params) {
     double gas_density_factor = 200.0; //gas density factor, set to 200 for now
     rho_gas_z *= gas_density_factor;
 
-    double DF_heating = eta * 4 * PI * pow(G * m * Msun, 2) * rho_gas_z * I_DF / V_vir;
+    double DF_heating =  4 * PI * pow(G * m * Msun, 2) * rho_gas_z * I_DF / V_vir;
     DF_heating *= dNsub_dMhost_ln(ln_m_over_M);
     double growthf = dicke(z);
     DF_heating *= dNdM(growthf, M) * log(10.0) * M;  //#convert from M to log10(M)
@@ -1059,19 +1234,19 @@ double DF_integrand(double *x, size_t dim, void *params) {
 
 
 /*
- FUNCTION integrate_DF_heating(z)
+ FUNCTION integrate_DF_heating_2D(z)
  integrate_DF_heating [erg/s comoving Mpc^(-3)]
 */
 
 // Integration function that accepts redshift as input
-double integrate_DF_heating(double z) {
+double integrate_DF_heating_2D(double z) {
     // Integration limits
     double ln_m_over_M_limits[2] = {log(1e-3), 0}; 
     double M_Jeans = pow(220*(1+z),1.425);
     double logM_limits[2] = {log10(M_Jeans), 15};       
 
     // Setup for Monte Carlo integration
-    gsl_monte_function G_func = { &DF_integrand, 2, &z };
+    gsl_monte_function G_func = { &DF_integrand_2D, 2, &z };
     gsl_rng_env_setup();
     const gsl_rng_type *T = gsl_rng_default;
     gsl_rng *r = gsl_rng_alloc(T);
@@ -1097,6 +1272,7 @@ double integrate_DF_heating(double z) {
 
     return res;
 }
+
 
 
 /*

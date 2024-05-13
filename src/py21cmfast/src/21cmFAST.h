@@ -56,6 +56,8 @@ struct AstroParams{
     float NU_X_THRESH;
     float X_RAY_SPEC_INDEX;
     float X_RAY_Tvir_MIN;
+    double ETA_DF;
+    int SHMF;
 
     double A_LW;
     double BETA_LW;

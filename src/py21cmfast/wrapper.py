@@ -2909,7 +2909,7 @@ def run_lightcone(
                 global_q[quantity][iz] = np.mean(
                     getattr(outs[_fld_names[quantity]][1], quantity)
                 )
-
+            print("global brightness temperature: ", global_q["brightness_temp"][iz])
             # Interpolate the lightcone
             print("interpolating lightcone for z: ", z)
             if z < max_redshift:

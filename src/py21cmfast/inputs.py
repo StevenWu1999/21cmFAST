@@ -821,6 +821,14 @@ class AstroParams(StructWithDefaults):
         Impact of the LW feedback on Mturn for minihaloes. Default is 22.8685 and 0.47 following Machacek+01, respectively. Latest simulations suggest 2.0 and 0.6. See Sec 2 of Muñoz+21 (2110.13919).
     A_VCB, BETA_VCB: float, optional
         Impact of the DM-baryon relative velocities on Mturn for minihaloes. Default is 1.0 and 1.8, and agrees between different sims. See Sec 2 of Muñoz+21 (2110.13919).
+    ETA_DF: float, optional
+        Efficiency of dynamical friction heating. Default is 1.0. Only used when `USE_DF_HEATING` is True.
+    SHMF: int, optional
+        Subhalo mass function to use for dynamical friction heating. Only useful when `USE_DF_HEATING` is True. default: Bosch2016
+        0: Bosch2016
+        1: TNG50fit
+        2: TNG50fitcutoff20 
+    
     """
 
     _ffi = ffi
@@ -849,6 +857,8 @@ class AstroParams(StructWithDefaults):
         "BETA_LW": 0.6,
         "A_VCB": 1.0,
         "BETA_VCB": 1.8,
+        "ETA_DF": 1.0,
+        "SHMF": 0,
     }
 
     def __init__(

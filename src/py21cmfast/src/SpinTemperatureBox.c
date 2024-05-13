@@ -25,7 +25,7 @@ double *dstarlya_cont_dt_box_MINI, *dstarlya_inj_dt_box_MINI, *dstarlya_cont_dt_
 //Variables needed for heating calculations
 double prev_Ts, tau21, xCMB, eps_CMB, E_continuum, E_injected, Ndot_alpha_cont, Ndot_alpha_inj, Ndot_alpha_cont_MINI, Ndot_alpha_inj_MINI;
 double ly2_store, ly2_store_MINI, lynto2_store, lynto2_store_MINI;
-double dCMBheat_dzp, dDFheat_dzp, eps_DF, eps_Lya_cont, eps_Lya_inj, eps_Lya_cont_MINI, eps_Lya_inj_MINI, dstarlya_cont_dt, dstarlya_inj_dt;
+double dCMBheat_dzp, dDFheat_dzp, global_DF_heating, eps_DF, eps_Lya_cont, eps_Lya_inj, eps_Lya_cont_MINI, eps_Lya_inj_MINI, dstarlya_cont_dt, dstarlya_inj_dt;
 
 double *log10_Mcrit_LW_ave_list;
 
@@ -1592,13 +1592,12 @@ LOG_SUPER_DEBUG("Initialised heat");
         x_e_ave = 0; Tk_ave = 0; Ts_ave = 0;
         printf("Got prefactors for the IGM spin temperature.\n");
 
-        eps_DF = 0.0;
+        global_DF_heating = 0.0; eps_DF = 0.0;
         if(flag_options->USE_DF_HEATING){
             printf("Calculating DF heating rate at z=%.2f\n", zp);
-            eps_DF = integrate_DF_heating(zp); //erg/s/comoving Mpc^3
+            global_DF_heating = astro_params->ETA_DF * integrate_DF_heating(zp,astro_params->SHMF); //erg/s/comoving Mpc^3
+            printf("DF heating rate at z=%.2f: %.5e erg/s/Mpc^3\n", zp, global_DF_heating*pow(1+zp,3));
         }
-        //debug print heating rate at this redshift
-        printf("DF heating rate at z=%.2f: %.2e erg/s/Mpc^3\n", zp, eps_DF*pow(1+zp,3));
 
         // Note: I have removed the call to evolveInt, as is default in the original Ts.c.
         // Removal of evolveInt and moving that computation below, removes unneccesary repeated computations
@@ -1967,7 +1966,7 @@ LOG_SUPER_DEBUG("Initialised heat");
                     }
                 }
 
-#pragma omp parallel shared(dxheat_dt_box,eps_DF,dxion_source_dt_box,dxlya_dt_box,dstarlya_dt_box,dfcoll_dz_val,del_fcoll_Rct,freq_int_heat_tbl_diff,\
+#pragma omp parallel shared(dxheat_dt_box,global_DF_heating,dxion_source_dt_box,dxlya_dt_box,dstarlya_dt_box,dfcoll_dz_val,del_fcoll_Rct,freq_int_heat_tbl_diff,\
                             m_xHII_low_box,inverse_val_box,freq_int_heat_tbl,freq_int_ion_tbl_diff,freq_int_ion_tbl,freq_int_lya_tbl_diff,\
                             freq_int_lya_tbl,dstarlya_dt_prefactor,R_ct,previous_spin_temp,this_spin_temp,const_zp_prefactor,prefactor_1,\
                             prefactor_2,delNL0,growth_factor_zp,dt_dzp,zp,dgrowth_factor_dzp,dcomp_dzp_prefactor,Trad_fast,dzp,TS_prefactor,\
@@ -1978,7 +1977,7 @@ LOG_SUPER_DEBUG("Initialised heat");
                             dstarlya_cont_dt_box_MINI,dstarlya_inj_dt_box_MINI,dstarlya_cont_dt_prefactor_MINI,dstarlya_inj_dt_prefactor_MINI) \
                     private(box_ct,x_e,T,dxion_sink_dt,dxe_dzp,dadia_dzp,dspec_dzp,dcomp_dzp,dxheat_dzp,J_alpha_tot,T_inv,T_inv_sq,\
                             eps_CMB,dCMBheat_dzp,dDFheat_dzp,E_continuum,E_injected,Ndot_alpha_cont,Ndot_alpha_inj,eps_Lya_cont,eps_Lya_inj,\
-                            Ndot_alpha_cont_MINI,Ndot_alpha_inj_MINI,eps_Lya_cont_MINI,eps_Lya_inj_MINI,prev_Ts,tau21,xCMB,\
+                            Ndot_alpha_cont_MINI,Ndot_alpha_inj_MINI,eps_Lya_cont_MINI,eps_Lya_inj_MINI,eps_DF,prev_Ts,tau21,xCMB,\
                             xc_fast,xi_power,xa_tilde_fast_arg,TS_fast,TSold_fast,xa_tilde_fast,dxheat_dzp_MINI,J_alpha_tot_MINI,curr_delNL0) \
                     num_threads(user_params->N_THREADS)
                 {
@@ -2143,13 +2142,27 @@ LOG_SUPER_DEBUG("Initialised heat");
                             dDFheat_dzp = 0.;
                             if (flag_options->USE_DF_HEATING) {
 
-                                // eps_DF *= (1. + curr_delNL0); //correction for local gas overdensity; cancelled out by baryon density
-                                eps_DF *= (1. + curr_delNL0); //correction for local Halo Mass Function
+                                // eps_DF *= (1. + delta) ; //correction for local gas overdensity; cancelled out by baryon density
+                                eps_DF = global_DF_heating * (1. + curr_delNL0 *growth_factor_zp); //correction for local Halo Mass Function
                                 //eps_DF *= pow(user_params->BOX_LEN/(float)user_params->HII_DIM, 3); //heating rate in the cell
                                 
-                                eps_DF /= prefactor_1; //convert to heating rate per baryon
+                                eps_DF /= (N_b0*pow(CMperMPC,3)); //convert to heating rate per baryon in comoving Mpc^3
+                                
+                                // printf("global_DF = %e, overdensity = %e, comovingNb = %e, eps_DF= %e\n", global_DF_heating,curr_delNL0*growth_factor_zp,N_b0*pow(CMperMPC,3),eps_DF);
 
                                 dDFheat_dzp = -eps_DF * (2. / 3. /k_B/ (1.+x_e))/hubble(zp)/(1.+zp);
+                                // printf("k_B = %e, x_e = %e, H(z) = %e, dDFheat_dzp = %e\n\n", k_B,x_e,hubble(zp),dDFheat_dzp);
+
+                                //if dDFheat_dzp is inf, terminate
+                                // if (isnan(dDFheat_dzp) || isinf(dDFheat_dzp)){
+                                //     printf("dDFheat_dzp is inf\n");
+                                //     exit(0);
+                                // }
+
+
+                                //compare DF heating to other terms
+                                // printf("All thermal terms: %e %e %e %e %e %e %e\n" , dadia_dzp, dcomp_dzp, dspec_dzp, dxheat_dzp, dxheat_dzp_MINI, dCMBheat_dzp, dDFheat_dzp);
+
                                 
                             }
 
