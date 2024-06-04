@@ -1228,6 +1228,16 @@ class LightCone(_HighLevelOutput):
                 global_q[k] = v
 
             f["node_redshifts"] = self.node_redshifts
+            
+            # Save cache_files
+            cache_files_group = f.create_group("cache_files")
+            for key, value in self.cache_files.items():
+                group = cache_files_group.create_group(key)
+                for i, (redshift, filepath) in enumerate(value):
+                    subgroup = group.create_group(str(i))
+                    subgroup.create_dataset('redshift', data=redshift)
+                    subgroup.create_dataset('filepath', data=filepath)
+            
 
     @classmethod
     def _read_inputs(cls, fname):
@@ -1258,6 +1268,19 @@ class LightCone(_HighLevelOutput):
             kwargs["global_quantities"] = {k: glb[k][...] for k in glb.keys()}
 
             kwargs["node_redshifts"] = fl["node_redshifts"][...]
+            
+            #read cache_files
+            kwargs["cache_files"] = {}
+            cache_files_group = fl["cache_files"]
+            for key in cache_files_group.keys():
+                group = cache_files_group[key]
+                file_list = []
+                for subgroup_key in group.keys():
+                    subgroup = group[subgroup_key]
+                    redshift = subgroup['redshift'][()]
+                    filepath = subgroup['filepath'][()].decode('utf-8')  # decode if stored as byte string
+                    file_list.append((redshift, filepath))
+                kwargs["cache_files"][key] = file_list
 
         return kwargs
 
