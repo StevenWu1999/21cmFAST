@@ -1590,11 +1590,11 @@ LOG_SUPER_DEBUG("Initialised heat");
         prefactor_2_MINI = astro_params->F_STAR7_MINI * C * N_b0 / FOURPI;
 
         x_e_ave = 0; Tk_ave = 0; Ts_ave = 0;
-        printf("Got prefactors for the IGM spin temperature.\n");
+        //printf("Got prefactors for the IGM spin temperature.\n");
 
         global_DF_heating = 0.0; eps_DF = 0.0;
         if(flag_options->USE_DF_HEATING){
-            printf("Calculating DF heating rate at z=%.2f\n", zp);
+            //printf("Calculating DF heating rate at z=%.2f\n", zp);
             global_DF_heating = astro_params->ETA_DF * integrate_DF_heating(zp,astro_params->SHMF); //erg/s/comoving Mpc^3
             printf("DF heating rate at z=%.2f: %.5e erg/s/Mpc^3\n", zp, global_DF_heating*pow(1+zp,3));
         }

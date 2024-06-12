@@ -1188,7 +1188,7 @@ double integrate_DF_heating(double z, int SHMF_model) {
     int status;
     gsl_set_error_handler_off();
 
-    printf("start integrating DF heating at z = %e\n",z);
+    //printf("start integrating DF heating at z = %e\n",z);
     status = gsl_integration_qag (&F, lgM_min, lgM_max, 0, rel_tol, 1000, GSL_INTEG_GAUSS61, w, &result, &error);
     // status = gsl_integration_qag (&F, lgM_min, lgM_max, 0, rel_tol, 1000, GSL_INTEG_GAUSS61, w, &result, &error);
 
@@ -1200,7 +1200,7 @@ double integrate_DF_heating(double z, int SHMF_model) {
         exit(1);
     }
     gsl_integration_workspace_free(w);
-    printf("HMF integral = %e\n", result);
+    //printf("HMF integral = %e\n", result);
 
     double SHMF_integral = integrate_subhalo_mass_function(z, SHMF_model);
     result *= SHMF_integral;
@@ -1259,13 +1259,13 @@ double integrate_DF_heating_2D(double z) {
     gsl_monte_vegas_integrate(&G_func, ln_m_over_M_limits, logM_limits, 2, 10000, r, s, &res, &err);
     
     // Check initial results
-    printf("Initial result: %g Error: %g\n", res, err);
+    //printf("Initial result: %g Error: %g\n", res, err);
     // Refine the estimate
     do {
         gsl_monte_vegas_integrate(&G_func, ln_m_over_M_limits, logM_limits, 2, calls, r, s, &res, &err);
         calls *= 2;  // Double the number of calls for refined accuracy if needed
     } while (fabs(gsl_monte_vegas_chisq(s) - 1.0) > 0.7 && gsl_monte_vegas_chisq(s) != HUGE_VAL && calls < 1e5);
-    printf("Final result: %g Error: %g\n", res, err);
+    //printf("Final result: %g Error: %g\n", res, err);
     // Cleanup
     gsl_monte_vegas_free(s);
     gsl_rng_free(r);
